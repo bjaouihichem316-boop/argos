@@ -5,7 +5,7 @@ import { Queue } from "bullmq";
 
 const connection = { url: process.env.REDIS_URL ?? "redis://localhost:6379" };
 
-export const aggregateQueue = new Queue("aggregate", { connection });
+export const aggregateQueue = new Queue("rss-fetch", { connection });
 
 export interface AggregateJobData {
   sourceName: string;

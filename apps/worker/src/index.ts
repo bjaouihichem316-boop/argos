@@ -1,74 +1,22 @@
-import { Worker } from "bullmq";
-import { runMonitorPoll, type PollJobData } from "./jobs/poll.js";
 import { enqueueMonitorPoll } from "./queues/monitor.js";
-import { runAnalysisJob, type AnalysisJobData } from "./jobs/analysis.js";
 import { enqueueAnalysis } from "./queues/analysis.js";
-import { runIngestJob, type IngestJobData } from "./jobs/ingest.js";
 import { enqueueIngest } from "./queues/ingest.js";
-import { runAggregateJob, type AggregateJobData } from "./jobs/aggregate.js";
 import { enqueueAggregate } from "./queues/aggregate.js";
 import { getPendingAnalysis, getPendingIngest } from "./db/client.js";
 
-const connection = { url: process.env.REDIS_URL ?? "redis://localhost:6379" };
+// ─── Queue workers (from workers/ folder) ────────────────────────────────
+import { monitorWorker } from "./workers/monitor.worker.js"; // existing
+import { rssWorker } from "./workers/rss.worker.js";
+import { analyzeWorker } from "./workers/analyze.worker.js";
+import { ingestWorker } from "./workers/ingest.worker.js";
 
-// ─── Queue workers ───────────────────────────────────────────────────────
-
-const monitorWorker = new Worker<PollJobData>(
-  "monitor-poll",
-  async (job) => runMonitorPoll(job.data),
-  { connection },
-);
-
-monitorWorker.on("completed", (job, result) =>
-  console.log(`✓ monitor-poll #${job.id} → ${JSON.stringify(result)}`),
-);
-monitorWorker.on("failed", (job, err) =>
-  console.error(`✗ monitor-poll #${job?.id} failed: ${err.message}`),
-);
-
-const analysisWorker = new Worker<AnalysisJobData>(
-  "analysis",
-  async (job) => runAnalysisJob(job),
-  { connection },
-);
-
-analysisWorker.on("completed", (job, result) =>
-  console.log(`✓ analysis #${job.id} (${result.articleId}) → analyzed=${result.analyzed}`),
-);
-analysisWorker.on("failed", (job, err) =>
-  console.error(`✗ analysis #${job?.id} (${job?.data?.articleId}) failed: ${err.message}`),
-);
-
-const ingestWorker = new Worker<IngestJobData>(
-  "ingest",
-  async (job) => runIngestJob(job),
-  { connection },
-);
-
-ingestWorker.on("completed", (job, result) =>
-  console.log(`✓ ingest #${job.id} (${result.articleId}) → ingested=${result.ingested}`),
-);
-ingestWorker.on("failed", (job, err) =>
-  console.error(`✗ ingest #${job?.id} (${job?.data?.articleId}) failed: ${err.message}`),
-);
-
-const aggregateWorker = new Worker<AggregateJobData>(
-  "aggregate",
-  async (job) => runAggregateJob(job),
-  { connection },
-);
-
-aggregateWorker.on("completed", (job, result) =>
-  console.log(`✓ aggregate #${job.id} (${result.sourceName}) → inserted=${result.inserted}`),
-);
-aggregateWorker.on("failed", (job, err) =>
-  console.error(`✗ aggregate #${job?.id} failed: ${err.message}`),
-);
+// Re-export workers for external usage
+export { rssWorker, analyzeWorker, ingestWorker, monitorWorker };
 
 // ─── Main entry ────────────────────────────────────────────────────────────
 
 if (import.meta.main) {
-  console.log("◆ ARGOS worker up — queues: monitor-poll | analysis | ingest | aggregate");
+  console.log("◆ ARGOS worker up — queues: monitor-poll | rss-fetch | analyze | ingest");
 
   // Phase 1 cadence: poll every 5 min
   setInterval(() => enqueueMonitorPoll(20).catch(console.error), 5 * 60 * 1000);
