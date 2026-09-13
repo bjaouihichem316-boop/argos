@@ -3,6 +3,10 @@ import { cors } from "hono/cors";
 import { PaginationQuerySchema, SearchQuerySchema } from "@argos/core";
 import { MonitorUnavailableError, WorldMonitorClient } from "@argos/monitor";
 import { monitorRoute } from "./routes/monitor.js";
+import { statsRoute } from "./routes/stats.js";
+import { articlesRoute } from "./routes/articles.js";
+import { graphRoute } from "./routes/graph.js";
+import { entityRoute } from "./routes/entity.js";
 
 const app = new Hono();
 
@@ -25,6 +29,12 @@ app.route(
   "/api/monitor",
   monitorRoute(getClient, { PaginationQuerySchema, SearchQuerySchema, MonitorUnavailableError }),
 );
+
+// Phase 6 APIs
+app.route("/api", statsRoute);
+app.route("/api", articlesRoute);
+app.route("/api", graphRoute);
+app.route("/api", entityRoute);
 
 const port = Number(process.env.API_PORT ?? 8787);
 
