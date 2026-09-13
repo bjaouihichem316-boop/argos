@@ -1,0 +1,15 @@
+FROM neo4j:5.26-community
+
+USER root
+
+# نسخ APOC المضمن من مجلد labs إلى مجلد plugins
+RUN cp /var/lib/neo4j/labs/apoc-*-core.jar /var/lib/neo4j/plugins/ 2>/dev/null || \
+    cp /var/lib/neo4j/labs/apoc-*.jar /var/lib/neo4j/plugins/ 2>/dev/null || true
+
+# التأكد من أن الإضافات مملوكة للمستخدم neo4j
+RUN chown -R neo4j:neo4j /var/lib/neo4j/plugins
+
+USER neo4j
+
+# تعطيل التحميل التلقائي (الإضافات موجودة مسبقاً)
+ENV NEO4J_PLUGINS='[]'
