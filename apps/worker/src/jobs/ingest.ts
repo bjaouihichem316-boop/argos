@@ -31,7 +31,11 @@ export async function runIngestJob(job: Job<IngestJobData, unknown, string>): Pr
     body: article.body,
     source: article.source,
     url: article.url,
-    publishedAt: article.published_at ?? undefined,
+    publishedAt: article.published_at
+      ? ((article.published_at as unknown) instanceof Date
+          ? (article.published_at as unknown as Date).toISOString()
+          : String(article.published_at))
+      : undefined,
     lang: (article.lang as "ar" | "en" | "fr" | "other") ?? "ar",
     author: article.author ?? undefined,
     tags: article.tags ?? [],
