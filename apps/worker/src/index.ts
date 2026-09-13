@@ -2,6 +2,7 @@ import { enqueueMonitorPoll } from "./queues/monitor.js";
 import { enqueueAnalysis } from "./queues/analysis.js";
 import { enqueueIngest } from "./queues/ingest.js";
 import { enqueueAggregate } from "./queues/aggregate.js";
+import { DEFAULT_SOURCES } from "@argos/aggregator";
 import { getPendingAnalysis, getPendingIngest } from "./db/client.js";
 
 // ─── Queue workers (from workers/ folder) ────────────────────────────────
@@ -39,4 +40,16 @@ if (import.meta.main) {
       await enqueueIngest(row.id, { attempts: 2 });
     }
   }, 3 * 60 * 1000);
+
+  // Schedule aggregate (RSS) sweep every 15 min (Phase 4 automation)
+  setInterval(async () => {
+    for (const source of DEFAULT_SOURCES) {
+      await enqueueAggregate(source.id, source.url).catch(console.error);
+    }
+  }, 15 * 60 * 1000);
+
+  // Initial RSS fetch call
+  for (const source of DEFAULT_SOURCES) {
+    await enqueueAggregate(source.id, source.url).catch(console.error);
+  }
 }
