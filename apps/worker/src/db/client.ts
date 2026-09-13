@@ -194,6 +194,34 @@ export async function markIngested(id: string): Promise<void> {
 }
 
 /**
+ * يجلب مقالاً واحداً من الجدول بواسطة `id`.
+ * @param id - معرّف المقال.
+ * @returns الصف أو `null` إذا لم يُوجد.
+ */
+export async function getArticleById(id: string): Promise<ArticleRow | null> {
+  const sql = getDb();
+  const result = await sql.unsafe(
+    `SELECT * FROM articles WHERE id = $1`,
+    [id],
+  );
+  const rows = result as ArticleRow[];
+  return rows.length > 0 ? rows[0] ?? null : null;
+}
+
+/**
+ * يجلب مقالاً مع تحليله (`analysis`) من الجدول.
+ * @param id - معرّف المقال.
+ * @returns `{ article, analysis }` أو `null` إذا لم يُوجد.
+ */
+export async function getArticleWithAnalysis(
+  id: string,
+): Promise<{ article: ArticleRow; analysis: ArticleAnalysis } | null> {
+  const row = await getArticleById(id);
+  if (!row || !row.analysis) return null;
+  return { article: row, analysis: row.analysis as ArticleAnalysis };
+}
+
+/**
  * يُرجع إحصائيات الجدول: الكلّي، المُحلّل، المُستوعب، والفاشل (`retry_count > 0`).
  */
 export async function getStats(): Promise<{
