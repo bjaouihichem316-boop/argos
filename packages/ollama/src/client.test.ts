@@ -9,6 +9,8 @@ import type { Article } from "@argos/core";
 import {
   analyzeArticle,
   chat,
+  cleanForeignChars,
+  cleanValue,
   embed,
   extractJson,
   generate,
@@ -271,6 +273,31 @@ describe("extractJson", () => {
   test("يستخرج JSON المحاط بنص زائد", () => {
     const parsed = extractJson('إليك التحليل: {"a": 1} انتهى.') as { a: number };
     expect(parsed.a).toBe(1);
+  });
+});
+
+describe("cleanForeignChars", () => {
+  test('يزيل Cyrillic: "قاعدة военных" → "قاعدة"', () => {
+    expect(cleanForeignChars("قاعدة военных")).toBe("قاعدة ");
+  });
+  test('يزيل CJK: "هدف 目标" → "هدف"', () => {
+    expect(cleanForeignChars("هدف 目标")).toBe("هدف ");
+  });
+  test('يزيل Korean و Japanese', () => {
+    expect(cleanForeignChars("مرحبا 한국 日本")).toBe("مرحبا  ");
+  });
+});
+
+describe("cleanValue", () => {
+  test("ينظف نصوصاً داخل كائن متداخل", () => {
+    const result = cleanValue({
+      name: "الحوثيون военных",
+      list: ["القوات 目标", "الرياض"],
+      meta: { tag: "日本" },
+    }) as { name: string; list: string[]; meta: { tag: string } };
+    expect(result.name).toBe("الحوثيون ");
+    expect(result.list).toEqual(["القوات ", "الرياض"]);
+    expect(result.meta.tag).toBe("");
   });
 });
 

@@ -44,6 +44,9 @@ export const TIMEOUT = TIMEOUT_MS;
 /** حجم السياق الافتراضي المُمرَّر لـ Ollama (مطابق للـ Modelfile). */
 export const DEFAULT_NUM_CTX = 16_384;
 
+/** عدد التوكنات المتوقع توليدها (لمنع قطع الـ output). */
+export const DEFAULT_NUM_PREDICT = 2048;
+
 /** درجة الحرارة الافتراضية (مطابقة للـ Modelfile — تحليل واقعي قليل العشوائية). */
 export const DEFAULT_TEMPERATURE = 0.2;
 
@@ -76,6 +79,8 @@ export interface ChatOptions {
   numCtx?: number;
   /** المهلة بالمللي ثانية (افتراضياً `TIMEOUT_MS`). */
   timeoutMs?: number;
+  /** عدد التوكنات المتوقع توليدها (افتراضياً `DEFAULT_NUM_PREDICT`). */
+  numPredict?: number;
   /** دالة `fetch` مخصصة (للاختبارات أو بيئات خاصة). */
   fetchFn?: typeof fetch;
 }
@@ -98,6 +103,8 @@ export interface GenerateOptions {
   numCtx?: number;
   /** المهلة بالمللي ثانية (افتراضياً `TIMEOUT_MS`). */
   timeoutMs?: number;
+  /** عدد التوكنات المتوقع توليدها (افتراضياً `DEFAULT_NUM_PREDICT`). */
+  numPredict?: number;
   /** دالة `fetch` مخصصة (للاختبارات أو بيئات خاصة). */
   fetchFn?: typeof fetch;
 }
@@ -144,6 +151,8 @@ export interface AnalyzeArticleOptions {
   temperature?: number;
   /** المهلة بالمللي ثانية (افتراضياً `TIMEOUT_MS`). */
   timeoutMs?: number;
+  /** عدد المحاولات الإضافية عند فشل التحليل (افتراضياً 3). */
+  maxRetries?: number;
   /** دالة `fetch` مخصصة (للاختبارات أو بيئات خاصة). */
   fetchFn?: typeof fetch;
 }
@@ -319,27 +328,88 @@ async function readOkText(res: Response, url: string): Promise<string> {
 }
 
 /**
+ * ينظّف نص JSON من التشوهات الشائعة من Falcon-H1:
+ * - يحوّل الفواصل العربية (،) إلى إنجليزية (,)
+ * - يزيل الحروف المشوّهة (CJK / Cyrillic) التي يهلوس بها النموذج
+ * - يزيل حروف التحكم الخفية (zero-width) التي قد تُفسد التحليل
+ */
+function sanitizeJson(text: string): string {
+  return text
+    // فواصل عربية → إنجليزية
+    .replace(/،/g, ",")
+    // حذف حروف CJK المشوّهة (صينية/يابانية/كورية)
+    .replace(/[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/g, "")
+    // حذف حروف Cyrillic المشوّهة (روسية)
+    .replace(/[\u0400-\u04ff\u0500-\u052f]/g, "")
+    // حذف zero-width / حروف تحكم خفية
+    .replace(/[\u200b-\u200f\ufeff\ufe00-\ufe0f]/g, "")
+    // حذف أي حروف تحكم غير مرئية أخرى
+    .replace(/[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f-\x9f]/g, "");
+}
+
+/**
+ * يزيل الحروف الأجنبية المشوّهة (Cyrillic، CJK، Korean، Japanese).
+ */
+export function cleanForeignChars(s: string): string {
+  return s
+    .replace(/[\u0400-\u04ff\u0500-\u052f]/g, "") // Cyrillic
+    .replace(/[\u4e00-\u9fff]/g, "") // CJK Unified
+    .replace(/[\u3040-\u30ff]/g, "") // Hiragana + Katakana (Japanese)
+    .replace(/[\uac00-\ud7af]/g, ""); // Korean Hangul
+}
+
+/**
+ * ينظّف قيمة بشكل متكرر: إذا كانت نصاً يُطبّق cleanForeignChars،
+ * وإذا كانت مصفوفة يُطبّق على كل عنصر، وإذا كانت كائناً يُطبّق على كل قيمة.
+ */
+export function cleanValue(v: unknown): unknown {
+  if (typeof v === "string") return cleanForeignChars(v);
+  if (Array.isArray(v)) return v.map(cleanValue);
+  if (v !== null && typeof v === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v)) {
+      result[k] = cleanValue(val);
+    }
+    return result;
+  }
+  return v;
+}
+
+/**
  * يستخرج كائن JSON من نص النموذج.
  * يتسامح مع تسييج ```json ... ``` ومع أي نص زائد حول الكائن.
+ * يُصحّح الفواصل العربية ويزيل الحروف المشوّهة قبل التحليل.
  * @throws {ParseError} إذا تعذّر إيجاد/تحليل JSON.
  */
 export function extractJson(raw: string): unknown {
   const text = raw.trim();
   if (!text) throw new ParseError("مخرجات النموذج فارغة — لا يوجد JSON لتحليله", raw);
+
   // جرّد تسييج markdown إن وُجد: ```json ... ``` أو ``` ... ```
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1]?.trim();
-  const candidate = (fenced ?? text).trim();
+  // نأخذ أول كتلة فقط وننظفها
+  let fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1]?.trim();
+  let candidate = (fenced ?? text).trim();
+
+  // إذا كان هناك أكثر من كتلة JSON محتملة، نأخذ أول `{...}` كامل
+  const firstBrace = candidate.indexOf("{");
+  const lastBrace = candidate.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    candidate = candidate.slice(firstBrace, lastBrace + 1);
+  }
+
+  candidate = sanitizeJson(candidate);
+
   // محاولة مباشرة أولاً
   try {
     return JSON.parse(candidate) as unknown;
   } catch {
-    // ثم البحث عن أول { ... آخر } في النص
+    // ثم البحث عن أول { ... آخر } في النص المنظّف
     const start = candidate.indexOf("{");
     const end = candidate.lastIndexOf("}");
     if (start === -1 || end === -1 || end <= start) {
       throw new ParseError("فشل تحليل JSON من مخرجات النموذج", raw);
     }
-    const slice = candidate.slice(start, end + 1);
+    const slice = sanitizeJson(candidate.slice(start, end + 1));
     try {
       return JSON.parse(slice) as unknown;
     } catch (err) {
@@ -388,6 +458,7 @@ export async function chat(opts: ChatOptions): Promise<ChatResponse> {
     options: {
       temperature: opts.temperature ?? DEFAULT_TEMPERATURE,
       num_ctx: opts.numCtx ?? DEFAULT_NUM_CTX,
+      num_predict: opts.numPredict ?? DEFAULT_NUM_PREDICT,
     },
   };
 
@@ -452,6 +523,7 @@ export async function generate(opts: GenerateOptions): Promise<ChatResponse> {
     options: {
       temperature: opts.temperature ?? DEFAULT_TEMPERATURE,
       num_ctx: opts.numCtx ?? DEFAULT_NUM_CTX,
+      num_predict: opts.numPredict ?? DEFAULT_NUM_PREDICT,
     },
   };
 
@@ -570,7 +642,7 @@ export const ANALYZE_SYSTEM_PROMPT = `أنت محلل استخباراتي إخ�
 - "analysis": مصفوفة تحليل (السياق، الدوافع المحتملة، التداعيات)
 - "confidence": واحدة فقط من "low" أو "medium" أو "high" (بحروف صغيرة إنجليزية)
 - "entities": كائن فيه "organizations" و"people" و"places" (مصفوفات أسماء بالعربية، فارغة إن لم توجد)
-قواعد صارمة: اكتب بالعربية الفصحى فقط. لا تختلق معلومات غير موجودة في النص. إذا شككت فقل "غير مؤكد".`;
+قواعد صارمة: اكتب بالعربية الفصحى فقط. ممنوع منعاً باتاً الحروف السيريلية أو الصينية أو اليابانية. إذا ما وجدت كلمة عربية، استعمل كلمة إنجليزية بسيطة. لا تخلط اللغات داخل الجملة. لا تختلق معلومات غير موجودة في النص. إذا شككت فقل "غير مؤكد".`;
 
 /** أقصى طول لمتن المقال المُرسل للنموذج (حماية لنافذة السياق). */
 export const MAX_ARTICLE_CHARS = 6000;
@@ -587,30 +659,41 @@ export async function analyzeArticle(
   article: Article,
   opts?: AnalyzeArticleOptions,
 ): Promise<ArticleAnalysis> {
+  const maxRetries = opts?.maxRetries ?? 3;
   const body = article.body.length > MAX_ARTICLE_CHARS
     ? `${article.body.slice(0, MAX_ARTICLE_CHARS)}\n…`
     : article.body;
   const userPrompt = `العنوان: ${article.title}\nالمصدر: ${article.source}\nالنص:\n${body}\n\nأعد التحليل بصيغة JSON حسب التعليمات.`;
 
-  const res = await chat({
-    host: opts?.host,
-    model: opts?.model,
-    messages: [{ role: "user", content: userPrompt }],
-    system: ANALYZE_SYSTEM_PROMPT,
-    format: "json",
-    temperature: opts?.temperature ?? DEFAULT_TEMPERATURE,
-    timeoutMs: opts?.timeoutMs,
-    fetchFn: opts?.fetchFn,
-  });
+  let lastErr: Error | undefined;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await chat({
+        host: opts?.host,
+        model: opts?.model,
+        messages: [{ role: "user", content: userPrompt }],
+        system: ANALYZE_SYSTEM_PROMPT,
+        format: "json",
+        temperature: opts?.temperature ?? DEFAULT_TEMPERATURE,
+        timeoutMs: opts?.timeoutMs,
+        fetchFn: opts?.fetchFn,
+      });
 
-  const json = extractJson(res.content);
-  const parsed = ArticleAnalysisSchema.safeParse(json);
-  if (!parsed.success) {
-    throw new ParseError(
-      `تحليل المقال لا يطابق المخطط المتوقع: ${parsed.error.message}`,
-      res.content,
-      { cause: parsed.error },
-    );
+      const raw = extractJson(res.content);
+      const cleaned = cleanValue(raw);
+      const parsed = ArticleAnalysisSchema.safeParse(cleaned);
+      if (parsed.success) {
+        return parsed.data;
+      }
+      lastErr = new ParseError(
+        `تحليل المقال لا يطابق المخطط المتوقع: ${parsed.error.message}`,
+        res.content,
+        { cause: parsed.error },
+      );
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+      // نعيد المحاولة إذا لم نصل للحد الأقصى
+    }
   }
-  return parsed.data;
+  throw lastErr ?? new ParseError("فشل تحليل المقال بعد عدة محاولات", article.body);
 }
