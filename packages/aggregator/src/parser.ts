@@ -61,7 +61,10 @@ function buildArticleId(sourceId: string, url: string): string {
 function parseDate(item: RawFeedItem): string | undefined {
   const raw = item.isoDate ?? item.pubDate;
   if (!raw) return undefined;
-  const d = new Date(raw);
+
+  // قد يكون Date object من rss-parser
+  const d = (raw as unknown) instanceof Date ? (raw as unknown as Date) : new Date(raw as string);
+
   if (Number.isNaN(d.getTime())) return undefined;
   return d.toISOString();
 }
