@@ -647,6 +647,15 @@ export const ANALYZE_SYSTEM_PROMPT = `أنت محلل استخباراتي إخ�
 /** أقصى طول لمتن المقال المُرسل للنموذج (حماية لنافذة السياق). */
 export const MAX_ARTICLE_CHARS = 6000;
 
+function sanitizeTitle(title: string): string {
+  return title
+    .replace(/["""'''«»]/g, "")
+    .replace(/\s*[-–—]+\s*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 200);
+}
+
 /**
  * يحلّل مقالاً إخبارياً ويعيد ملخصاً ووقائع وتحليلاً وكيانات.
  * يستعمل `chat` مع `format: 'json'` ثم يتحقق من النتيجة بـ Zod.
@@ -663,7 +672,8 @@ export async function analyzeArticle(
   const body = article.body.length > MAX_ARTICLE_CHARS
     ? `${article.body.slice(0, MAX_ARTICLE_CHARS)}\n…`
     : article.body;
-  const userPrompt = `العنوان: ${article.title}\nالمصدر: ${article.source}\nالنص:\n${body}\n\nأعد التحليل بصيغة JSON حسب التعليمات.`;
+  const cleanTitle = sanitizeTitle(article.title);
+  const userPrompt = `العنوان: ${cleanTitle}\nالمصدر: ${article.source}\nالنص:\n${body}\n\nأعد التحليل بصيغة JSON حسب التعليمات.`;
 
   let lastErr: Error | undefined;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
