@@ -29,9 +29,9 @@ export const DEFAULT_EMBED_MODEL = "bge-m3";
 /**
  * عنوان خادم Ollama الافتراضي.
  * يُقرأ من متغير البيئة `OLLAMA_HOST` وإلا `http://localhost:11434`.
+ * يُطبَّع عبر `resolveHost` (يتحمّل غياب البروتوكول وعنوان الـ bind `0.0.0.0`).
  */
-export const DEFAULT_HOST: string =
-  process.env.OLLAMA_HOST?.replace(/\/$/, "") || "http://localhost:11434";
+export const DEFAULT_HOST: string = resolveHost(process.env.OLLAMA_HOST);
 
 /**
  * مهلة الطلبات بالمللي ثانية (دقيقتان — النموذج بطيء نسبياً على CPU).
@@ -257,9 +257,22 @@ export class ParseError extends Error {
 
 // ─── أدوات داخلية ─────────────────────────────────────────────────────
 
-/** يوحّد عنوان الخادم (إزالة `/` الزائدة) مع الرجوع للافتراضي. */
-function resolveHost(host?: string): string {
-  return (host ?? DEFAULT_HOST).replace(/\/$/, "");
+/**
+ * يوحّد عنوان الخادم ويتحمّل قيم `OLLAMA_HOST` المحطوطة بغلط:
+ * - يُضيف `http://` عند غياب البروتوكول (مثال: `"127.0.0.1:11434"`)
+ * - يُبدّل عنوان الـ bind `"0.0.0.0"` بـ `"127.0.0.1"` (غير قابل للاتصال به كوجهة)
+ * - يُزيل أي `/` زائدة في النهاية
+ * - يرجع `http://localhost:11434` عند القيمة الفارغة/غير المعرّفة
+ */
+export function resolveHost(host?: string): string {
+  const FALLBACK = "http://localhost:11434";
+  let h = (host ?? process.env.OLLAMA_HOST ?? "").trim();
+  if (!h) return FALLBACK;
+  h = h.replace(/\/+$/, "").trim();
+  if (!h) return FALLBACK;
+  if (h.includes("0.0.0.0")) h = h.replaceAll("0.0.0.0", "127.0.0.1");
+  if (!/^https?:\/\//i.test(h)) h = `http://${h}`;
+  return h.replace(/\/+$/, "");
 }
 
 /** يرجع النموذج المطلوب أو الافتراضي للمحادثة. */

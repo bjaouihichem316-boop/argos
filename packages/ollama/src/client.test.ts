@@ -15,6 +15,7 @@ import {
   listModels,
   OllamaError,
   ParseError,
+  resolveHost,
 } from "./client.js";
 
 // ─── أدوات مساعدة للاختبارات ───────────────────────────────────────────
@@ -270,5 +271,33 @@ describe("extractJson", () => {
   test("يستخرج JSON المحاط بنص زائد", () => {
     const parsed = extractJson('إليك التحليل: {"a": 1} انتهى.') as { a: number };
     expect(parsed.a).toBe(1);
+  });
+});
+
+// ─── resolveHost ───────────────────────────────────────────────────────
+
+describe("resolveHost", () => {
+  test('يضيف http:// عند غياب البروتوكول: "127.0.0.1:11434"', () => {
+    expect(resolveHost("127.0.0.1:11434")).toBe("http://127.0.0.1:11434");
+  });
+
+  test('يبدّل bind address ويضيف البروتوكول: "0.0.0.0:11434"', () => {
+    expect(resolveHost("0.0.0.0:11434")).toBe("http://127.0.0.1:11434");
+  });
+
+  test('يُبقي العنوان السليم كما هو: "http://localhost:11434"', () => {
+    expect(resolveHost("http://localhost:11434")).toBe("http://localhost:11434");
+  });
+
+  test('يُبقي https كما هو: "https://ollama.local"', () => {
+    expect(resolveHost("https://ollama.local")).toBe("https://ollama.local");
+  });
+
+  test('يبدّل 0.0.0.0 ويحيّد trailing slash: "http://0.0.0.0:11434/"', () => {
+    expect(resolveHost("http://0.0.0.0:11434/")).toBe("http://127.0.0.1:11434");
+  });
+
+  test('يرجع الافتراضي عند القيمة الفارغة: ""', () => {
+    expect(resolveHost("")).toBe("http://localhost:11434");
   });
 });
