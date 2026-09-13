@@ -1,12 +1,16 @@
-/** @argos/aggregator — RSS aggregator (Phase 2). */
-export const AGGREGATOR_PHASE = 2 as const;
+/** @argos/aggregator — RSS aggregator (Phase 4). */
+export const AGGREGATOR_PHASE = 4 as const;
 
-export interface FetchFeedOptions {
-  url: string;
-  limit?: number;
-}
+export {
+  DEFAULT_SOURCES,
+  getSource,
+  getSourcesByLang,
+  type RssSource,
+} from "./sources.js";
 
-/** Phase 2 stub — implemented in Phase 2. */
-export async function fetchFeed(_opts: FetchFeedOptions): Promise<never> {
-  throw new Error("@argos/aggregator.fetchFeed — Phase 2 not implemented yet (see docs/ROADMAP.md)");
-}
+export {
+  RssError,
+  fetchFeed,
+  normalizeItem,
+  type RawFeedItem,
+} from "./parser.js";
