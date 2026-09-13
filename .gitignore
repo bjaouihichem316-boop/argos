@@ -1,0 +1,35 @@
+# Deps
+node_modules/
+bun.lockb
+
+# Builds
+dist/
+build/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# OS / Editor
+.DS_Store
+*.pem
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Data (local-first — never commit local DBs)
+*.db
+*.sqlite
+neo4j/data/
+postgres-data/
+
+# Media outputs
+*.mp4
+*.mp3
+*.wav
+outputs/

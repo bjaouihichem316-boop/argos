@@ -1,0 +1,22 @@
+{
+  "name": "@argos/worker",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot src/index.ts",
+    "build": "tsc --noEmit",
+    "start": "bun src/index.ts",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@argos/core": "workspace:*",
+    "@argos/monitor": "workspace:*",
+    "bullmq": "^5.18.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "@types/bun": "^1.2.0"
+  }
+}

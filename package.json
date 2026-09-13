@@ -1,0 +1,31 @@
+{
+  "name": "argos",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ARGOS — OSINT news intelligence platform. Local-first, Arabic-first, crypto-native.",
+  "packageManager": "bun@1.3.13",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:web": "turbo run dev --filter=@argos/web",
+    "dev:api": "turbo run dev --filter=@argos/api",
+    "dev:worker": "turbo run dev --filter=@argos/worker",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "cli": "bun run --filter @argos/cli start",
+    "docker:up": "docker compose -f infra/docker/docker-compose.yml up -d",
+    "docker:down": "docker compose -f infra/docker/docker-compose.yml down",
+    "setup": "bash infra/scripts/setup.sh"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.4",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  }
+}

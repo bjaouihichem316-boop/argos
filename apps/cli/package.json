@@ -1,0 +1,25 @@
+{
+  "name": "@argos/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "argos": "./src/index.ts"
+  },
+  "scripts": {
+    "start": "bun src/index.ts",
+    "dev": "bun --hot src/index.ts",
+    "build": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@argos/core": "workspace:*",
+    "@argos/monitor": "workspace:*",
+    "commander": "^12.1.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "@types/bun": "^1.2.0"
+  }
+}
